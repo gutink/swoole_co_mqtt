@@ -3,6 +3,7 @@
 namespace GuMqtt;
 
 use GuMqtt\Protocols\Mqtt;
+use phpDocumentor\Reflection\Types\False_;
 
 class Client {
 	/**
@@ -213,34 +214,29 @@ class Client {
 		};
 	}
 
-	public function __destruct() {
-		echo "关闭";
-		$this->close();
-	}
-
 	/**
 	 * connect
-	 * @return bool 是否连接成功
 	 */
-	public function connect():bool {
+	public function connect() {
 		$this->_doNotReconnect = false;
 		$this->_connection->connect( $this->_remoteHost, $this->_remotePort );
 		$this->setConnectionTimeout( $this->_options['connect_timeout'] );
 		if( $this->_options['debug'] ){
 			echo "-- Try to connect to {$this->_remoteHost}:{$this->_remotePort}", PHP_EOL;
 		}
-		return $this->mqttConnect();
+		$this->mqttConnect();
 	}
 
 	/**
 	 * @param bool $loop
+	 * @param float $recvTimeoutS recv超时时间，单位：秒
 	 * @return void
 	 * @throws
 	 */
-	public function loopForever( bool $loop = true ) {
+	public function loopForever( bool $loop = true, float $recvTimeoutS = 1 ) {
 		// $this->_state = static::STATE_ESTABLISHED;
 		do{
-			$data = $this->_connection->recv( 1 );
+			$data = $this->_connection->recv( $recvTimeoutS );
 			if( $data === '' ){
 				$this->close();
 				return;
@@ -260,16 +256,15 @@ class Client {
 	 * reconnect
 	 *
 	 * @param int $after
-	 * @return bool 是否连接成功
 	 */
-	public function reconnect( $after = 0 ):bool {
+	public function reconnect( $after = 0 ) {
 		$this->_doNotReconnect = false;
 		$this->_connection->connect( $this->_remoteHost, $this->_remotePort );
 		$this->setConnectionTimeout( $this->_options['connect_timeout'] + $after );
 		if( $this->_options['debug'] ){
 			echo "-- Reconnect after $after seconds", PHP_EOL;
 		}
-		return $this->onConnectionConnect();
+		$this->onConnectionConnect();
 	}
 
 	/**
@@ -460,9 +455,8 @@ class Client {
 
 	/**
 	 * onConnectionConnect
-	 * @return bool 是否连接成功
 	 */
-	public function mqttConnect():bool {
+	public function mqttConnect() {
 		$package = array(
 			'cmd' => Mqtt::CMD_CONNECT,
 			'clean_session' => $this->_options['clean_session'],
@@ -481,10 +475,14 @@ class Client {
 
 		$this->_connection->send( Mqtt::encode( $package ) );
 		// 处理连接返回信息
-		$i = 0; // 等待次数
+		$maxI = round( $this->_options['connect_timeout'] / 1000, 0 ); // 等待次数（默认每次1秒等待）
+		if( $i <= 0 ){
+			$i = 1;
+		}
 		do{
-			$this->loopForever( false );
-			if( $i++ > 10 ){
+			$this->loopForever( false, 1 );
+			if( --$maxI <= 0 ){
+				$this->triggerError( 101 );
 				break;
 			}
 		} while( $this->_state != static::STATE_ESTABLISHED );
@@ -492,7 +490,9 @@ class Client {
 			echo "↑ Tcp connection established", PHP_EOL;
 			echo "↑ Send CONNECT package client_id:{$this->_options['client_id']} username:{$this->_options['username']} password:{$this->_options['password']} clean_session:{$this->_options['clean_session']} protocol_name:{$this->_options['protocol_name']} protocol_level:{$this->_options['protocol_level']}", PHP_EOL;
 		}
-		return $this->_state === static::STATE_ESTABLISHED;
+		if( $this->_state !== static::STATE_ESTABLISHED ){
+			$this->triggerError( 102 );
+		}
 	}
 
 	/**
