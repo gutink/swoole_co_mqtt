@@ -1,0 +1,19 @@
+{
+    "name": "gutink/swoole_co_mqtt",
+    "description": "swoole coroutine mqtt client. fork try-to/swoole_mqtt",
+    "license": "MIT",
+    "authors": [{
+        "name": "gutink",
+        "email": "gjj9527@163.com"
+    }],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=7.0.0",
+        "ext-swoole": ">=4.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "GuMqtt\\": "src/"
+        }
+    }
+}
