@@ -1,5 +1,5 @@
 # MQTT
-Coroutines MQTT client for PHP based on swoole Coroutine.
+Coroutines MQTT client for PHP based on swoole.
 
 # Installation
 composer require gutink/swoole_co_mqtt

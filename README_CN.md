@@ -1,5 +1,5 @@
 # MQTT
-一个基于swoole的协程mqtt 客户端库，可用于接收或者发送mqtt协议的消息。支持QoS 0、QoS 1、QoS 2。支持MQTT 3.1和3.1.1版本.
+一个基于swoole的协程 mqtt 客户端库，可用于接收或者发送mqtt协议的消息。支持QoS 0、QoS 1、QoS 2。支持MQTT 3.1和3.1.1版本.
 
 # 安装
 composer require gutink/swoole_co_mqtt
