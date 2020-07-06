@@ -9,7 +9,7 @@
     "minimum-stability": "dev",
     "require": {
         "php": ">=7.0.0",
-        "ext-swoole": ">=4.5"
+        "ext-swoole": ">=4.4"
     },
     "autoload": {
         "psr-4": {
