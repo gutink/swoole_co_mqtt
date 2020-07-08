@@ -5,7 +5,7 @@ Coroutines MQTT client for PHP based on swoole.
 composer require gutink/swoole_co_mqtt
 
 # 文档
-[中文文档](https://github.com/gutink/swoole_mqtt/blob/master/README_CN.md)
+[中文文档](https://github.com/gutink/swoole_co_mqtt/blob/master/README_CN.md)
 
 # Example
 **subscribe.php**
