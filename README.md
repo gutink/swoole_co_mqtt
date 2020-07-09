@@ -11,7 +11,7 @@ composer require gutink/swoole_co_mqtt
 **subscribe.php**
 ```php
 <?php
-use TrytoMqtt\Client;
+use GuMqtt\Client;
 require_once __DIR__ . '/vendor/autoload.php';
 $options = [
     'clean_session' => false,
@@ -41,7 +41,7 @@ Run with command ```php subscribe.php```
 **publish.php**
 ```php
 <?php
-use TrytoMqtt\Client;
+use GuMqtt\Client;
 require_once __DIR__ . '/../vendor/autoload.php';
 $options = [
     'clean_session' => false,
