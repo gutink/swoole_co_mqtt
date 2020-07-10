@@ -5,13 +5,13 @@ Coroutines MQTT client for PHP based on swoole.
 composer require gutink/swoole_co_mqtt
 
 # 文档
-[中文文档](https://github.com/gutink/swoole_mqtt/blob/master/README_CN.md)
+[中文文档](https://github.com/gutink/swoole_co_mqtt/blob/master/README_CN.md)
 
 # Example
 **subscribe.php**
 ```php
 <?php
-use TrytoMqtt\Client;
+use GuMqtt\Client;
 require_once __DIR__ . '/vendor/autoload.php';
 $options = [
     'clean_session' => false,
@@ -41,7 +41,7 @@ Run with command ```php subscribe.php```
 **publish.php**
 ```php
 <?php
-use TrytoMqtt\Client;
+use GuMqtt\Client;
 require_once __DIR__ . '/../vendor/autoload.php';
 $options = [
     'clean_session' => false,
