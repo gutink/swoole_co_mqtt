@@ -157,7 +157,7 @@ class Client {
 		// the username required by your broker
 		'password' => '',
 		// the password required by your broker
-		'keepalive' => 50000,
+		'keepalive' => 60,
 		// default 50 seconds, set to 0 to disable
 		'protocol_name' => 'MQTT',
 		// protocol name MQTT or MQIsdp
@@ -476,8 +476,8 @@ class Client {
 		$this->_connection->send( Mqtt::encode( $package ) );
 		// 处理连接返回信息
 		$maxI = round( $this->_options['connect_timeout'] / 1000, 0 ); // 等待次数（默认每次1秒等待）
-		if( $i <= 0 ){
-			$i = 1;
+		if( $maxI <= 0 ){
+			$maxI = 1;
 		}
 		do{
 			$this->loopForever( false, 1 );
