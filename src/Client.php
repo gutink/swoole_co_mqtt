@@ -157,7 +157,7 @@ class Client {
 		// the username required by your broker
 		'password' => '',
 		// the password required by your broker
-		'keepalive' => 60,
+		'keepalive' => 60 * 1000,
 		// default 50 seconds, set to 0 to disable
 		'protocol_name' => 'MQTT',
 		// protocol name MQTT or MQIsdp
@@ -228,28 +228,53 @@ class Client {
 	}
 
 	/**
+	 * 消息循环
 	 * @param bool $loop
 	 * @param float $recvTimeoutS recv超时时间，单位：秒
-	 * @return void
+	 * @return bool|null [true]已处理 [false]关闭 [null]超时
 	 * @throws
 	 */
-	public function loopForever( bool $loop = true, float $recvTimeoutS = 1 ) {
+	public function loopForever( bool $loop = true, float $recvTimeoutS = 1 ):?bool {
 		// $this->_state = static::STATE_ESTABLISHED;
 		do{
 			$data = $this->_connection->recv( $recvTimeoutS );
 			if( $data === '' ){
 				$this->close();
-				return;
+				return false;
 			}
 			if( $data === false ){
 				if( $this->_connection->errCode === SOCKET_ETIMEDOUT ){
-					continue;
+					if( $loop ){
+						continue;
+					}else{
+						return null;
+					}
+
 				}
 				throw new \Exception( 'recv发生错误，错误代码' . $this->_connection->errMsg, $this->_connection->errCode );
 			}
 			//
 			$this->onConnectionReceive( $data );
 		} while( $loop );
+		//
+		return true;
+	}
+
+	/**
+	 * 消息循环直到超时
+	 * @param bool $loop
+	 * @param float $recvTimeoutS recv超时时间，单位：秒
+	 * @return void
+	 * @throws
+	 */
+	public function loopForeverOrTimeout( float $recvTimeoutS = 1 ) {
+		// 直到超时
+		while( 1 == 1 ){
+			$res = $this->loopForever( false, $recvTimeoutS );
+			if( $res === null ){
+				break;
+			}
+		}
 	}
 
 	/**
