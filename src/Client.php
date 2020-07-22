@@ -215,6 +215,30 @@ class Client {
 	}
 
 	/**
+	 * 获取mqtt配置参数
+	 * @return array
+	 */
+	public function getMqttOptions(  ):array {
+		return $this->_options;
+	}
+
+	/**
+	 * 获取mqtt client_id
+	 * @return string|null
+	 */
+	public function getMqttClientId(  ):?string {
+		return $this->_options['client_id'] ?? null;
+	}
+
+	/**
+	 * 获取连接Client
+	 * @return \Swoole\Coroutine\Client
+	 */
+	public function getConnection():\Swoole\Coroutine\Client {
+		return $this->_connection;
+	}
+
+	/**
 	 * connect
 	 */
 	public function connect() {
@@ -229,35 +253,43 @@ class Client {
 
 	/**
 	 * 消息循环
-	 * @param bool $loop
-	 * @param float $recvTimeoutS recv超时时间，单位：秒
-	 * @return bool|null [true]已处理 [false]关闭 [null]超时
+	 * @param int $loopMaxTime
+	 * @param float $recvTimeoutS recv超时时间，单位：秒 [null]默认超时，超时后执行默认动作，不返回SOCKET_ETIMEDOUT [>0]超时并返回SOCKET_ETIMEDOUT
+	 * @return int [1]已处理 [0]关闭 [SOCKET_ETIMEDOUT]超时
 	 * @throws
 	 */
-	public function loopForever( bool $loop = true, float $recvTimeoutS = 1 ):?bool {
-		// $this->_state = static::STATE_ESTABLISHED;
+	public function loopForever( int $loopMaxTime = -1, float $recvTimeoutS = null ):int {
+		$startTime = time();
+		$recvTimeoutSReal = $loopMaxTime > 0 ? 1 : ( $recvTimeoutS ?? 60 );
 		do{
-			$data = $this->_connection->recv( $recvTimeoutS );
+			if( $loopMaxTime > 0 && time() - $startTime >= $loopMaxTime ){
+				break;
+			}
+			$data = $this->_connection->recv( $recvTimeoutSReal );
 			if( $data === '' ){
 				$this->close();
-				return false;
+				return 0;
 			}
 			if( $data === false ){
-				if( $this->_connection->errCode === SOCKET_ETIMEDOUT ){
-					if( $loop ){
-						continue;
-					}else{
-						return null;
-					}
-
+				switch( $this->_connection->errCode ){
+					case SOCKET_ETIMEDOUT:
+						if( $recvTimeoutS !== null ){
+							return SOCKET_ETIMEDOUT;
+						}
+						continue 2;
+					case 104:
+						return 0;
+					case SWOOLE_ERROR_CLIENT_NO_CONNECTION:
+						return 0;
+					default:
+						throw new \Exception( 'recv发生错误，错误代码' . $this->_connection->errMsg, $this->_connection->errCode );
 				}
-				throw new \Exception( 'recv发生错误，错误代码' . $this->_connection->errMsg, $this->_connection->errCode );
 			}
 			//
 			$this->onConnectionReceive( $data );
-		} while( $loop );
+		} while( $loopMaxTime != 0 );
 		//
-		return true;
+		return 1;
 	}
 
 	/**
@@ -270,8 +302,8 @@ class Client {
 	public function loopForeverOrTimeout( float $recvTimeoutS = 1 ) {
 		// 直到超时
 		while( 1 == 1 ){
-			$res = $this->loopForever( false, $recvTimeoutS );
-			if( $res === null ){
+			$res = $this->loopForever( 0, $recvTimeoutS );
+			if( $res === SOCKET_ETIMEDOUT ){
 				break;
 			}
 		}
@@ -466,7 +498,7 @@ class Client {
 	}
 
 	/**
-	 * close
+	 * 关闭mqtt
 	 */
 	public function close() {
 		$this->_doNotReconnect = true;
@@ -474,8 +506,16 @@ class Client {
 			echo "-- Connection->close() called", PHP_EOL;
 		}
 		$this->onConnectionClose();
-		$this->_connection->close();
+		$this->closeConnection();
+	}
 
+	/**
+	 * 断开连接
+	 */
+	public function closeConnection() {
+		if( $this->_connection->isConnected() ){
+			$this->_connection->close();
+		}
 	}
 
 	/**
@@ -505,7 +545,7 @@ class Client {
 			$maxI = 1;
 		}
 		do{
-			$this->loopForever( false, 1 );
+			$this->loopForeverOrTimeout( 1 );
 			if( --$maxI <= 0 ){
 				$this->triggerError( 101 );
 				break;
@@ -542,6 +582,18 @@ class Client {
 	 * onConnectionReceive
 	 */
 	public function onConnectionReceive( $data ) {
+		// 拆包
+		$dataArray = Mqtt::splitBuffer( $data );
+		foreach( $dataArray as $dataValue ){
+			$this->handleConnectionReceive( $dataValue );
+		}
+	}
+
+	/**
+	 * 数据处理
+	 * @param $data
+	 */
+	public function handleConnectionReceive( $data ) {
 		$data = Mqtt::decode( $data );
 		if( empty( $data ) ){
 			return;
