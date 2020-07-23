@@ -156,16 +156,16 @@ class Client {
 		'username' => '',
 		// the username required by your broker
 		'password' => '',
-		// the password required by your broker
-		'keepalive' => 60 * 1000,
+		// the password required by your broker; unit: second
+		'keepalive' => 60,
 		// default 50 seconds, set to 0 to disable
 		'protocol_name' => 'MQTT',
 		// protocol name MQTT or MQIsdp
 		'protocol_level' => 4,
 		// protocol level, MQTT is 4 and MQIsdp is 3
-		'reconnect_period' => 1000,
+		'reconnect_period' => 15,
 		// reconnect period default 1 second, set to 0 to disable
-		'connect_timeout' => 3000,
+		'connect_timeout' => 15,
 		// 30 seconds, time to wait before a CONNACK is received
 		'resubscribe' => true,
 		// default true, if connection is broken and reconnects, subscribed topics are automatically subscribed again.
@@ -173,7 +173,7 @@ class Client {
 		// bindto option, used to specify the IP address that PHP will use to access the network
 		'ssl' => false,
 		// ssl context, see https://wiki.swoole.com/wiki/page/p-client_setting.html
-		'debug' => false,
+		'debug' => true,
 		// debug
 		'socket_buffer_size' => 1024 * 1024 * 2,
 		// 2M缓存区
@@ -251,6 +251,49 @@ class Client {
 		$this->mqttConnect();
 	}
 
+
+	/**
+	 * onConnectionConnect
+	 */
+	public function mqttConnect() {
+		$package = array(
+			'cmd' => Mqtt::CMD_CONNECT,
+			'clean_session' => $this->_options['clean_session'],
+			'username' => $this->_options['username'],
+			'password' => $this->_options['password'],
+			'keepalive' => $this->_options['keepalive'],
+			'protocol_name' => $this->_options['protocol_name'],
+			'protocol_level' => $this->_options['protocol_level'],
+			'client_id' => $this->_options['client_id'],
+		);
+		if( isset( $this->_options['will'] ) ){
+			$package['will'] = $this->_options['will'];
+		}
+
+		$this->_state = static::STATE_WAITCONACK;
+
+		$this->_connection->send( Mqtt::encode( $package ) );
+		// 处理连接返回信息
+		$maxI = round( $this->_options['connect_timeout'], 0 ); // 等待次数（默认每次1秒等待）
+		if( $maxI <= 0 ){
+			$maxI = 1;
+		}
+		do{
+			$this->loopForeverOrTimeout( 1 );
+			if( --$maxI <= 0 ){
+				$this->triggerError( 101 );
+				break;
+			}
+		} while( $this->_state != static::STATE_ESTABLISHED );
+		if( $this->_options['debug'] ){
+			echo "↑ Tcp connection established", PHP_EOL;
+			echo "↑ Send CONNECT package client_id:{$this->_options['client_id']} username:{$this->_options['username']} password:{$this->_options['password']} clean_session:{$this->_options['clean_session']} protocol_name:{$this->_options['protocol_name']} protocol_level:{$this->_options['protocol_level']}", PHP_EOL;
+		}
+		if( $this->_state !== static::STATE_ESTABLISHED ){
+			$this->triggerError( 102 );
+		}
+	}
+
 	/**
 	 * 消息循环
 	 * @param int $loopMaxTime
@@ -260,17 +303,31 @@ class Client {
 	 */
 	public function loopForever( int $loopMaxTime = -1, float $recvTimeoutS = null ):int {
 		$startTime = time();
-		$recvTimeoutSReal = $loopMaxTime > 0 ? 1 : ( $recvTimeoutS ?? 60 );
+		$recvTimeoutSReal = $loopMaxTime > 0 ? 1 : ( $recvTimeoutS ?? 1 );
 		do{
 			if( $loopMaxTime > 0 && time() - $startTime >= $loopMaxTime ){
 				break;
 			}
+			/*			if( $this->_state === static::STATE_ESTABLISHED ){
+							$this->publish( '1', '1' );
+							// $this->publish( '/b1qcqqib9FN/SL_NB_MCC_01/update', '1' );
+						}*/
+
 			$data = $this->_connection->recv( $recvTimeoutSReal );
+			d([
+				'time',
+				time() - $startTime,
+				$data,
+			]);
 			if( $data === '' ){
 				$this->close();
 				return 0;
 			}
 			if( $data === false ){
+				/*					d([
+										'recv发生错误，错误代码' . $this->_connection->errMsg, $this->_connection->errCode,
+										time() - $startTime,
+									]);*/
 				switch( $this->_connection->errCode ){
 					case SOCKET_ETIMEDOUT:
 						if( $recvTimeoutS !== null ){
@@ -278,6 +335,7 @@ class Client {
 						}
 						continue 2;
 					case 104:
+						// 104 recv发生错误，错误代码Connection reset by peer
 						return 0;
 					case SWOOLE_ERROR_CLIENT_NO_CONNECTION:
 						return 0;
@@ -518,47 +576,6 @@ class Client {
 		}
 	}
 
-	/**
-	 * onConnectionConnect
-	 */
-	public function mqttConnect() {
-		$package = array(
-			'cmd' => Mqtt::CMD_CONNECT,
-			'clean_session' => $this->_options['clean_session'],
-			'username' => $this->_options['username'],
-			'password' => $this->_options['password'],
-			'keepalive' => $this->_options['keepalive'],
-			'protocol_name' => $this->_options['protocol_name'],
-			'protocol_level' => $this->_options['protocol_level'],
-			'client_id' => $this->_options['client_id'],
-		);
-		if( isset( $this->_options['will'] ) ){
-			$package['will'] = $this->_options['will'];
-		}
-
-		$this->_state = static::STATE_WAITCONACK;
-
-		$this->_connection->send( Mqtt::encode( $package ) );
-		// 处理连接返回信息
-		$maxI = round( $this->_options['connect_timeout'] / 1000, 0 ); // 等待次数（默认每次1秒等待）
-		if( $maxI <= 0 ){
-			$maxI = 1;
-		}
-		do{
-			$this->loopForeverOrTimeout( 1 );
-			if( --$maxI <= 0 ){
-				$this->triggerError( 101 );
-				break;
-			}
-		} while( $this->_state != static::STATE_ESTABLISHED );
-		if( $this->_options['debug'] ){
-			echo "↑ Tcp connection established", PHP_EOL;
-			echo "↑ Send CONNECT package client_id:{$this->_options['client_id']} username:{$this->_options['username']} password:{$this->_options['password']} clean_session:{$this->_options['clean_session']} protocol_name:{$this->_options['protocol_name']} protocol_level:{$this->_options['protocol_level']}", PHP_EOL;
-		}
-		if( $this->_state !== static::STATE_ESTABLISHED ){
-			$this->triggerError( 102 );
-		}
-	}
 
 	/**
 	 * onMqttReconnect
@@ -846,10 +863,12 @@ class Client {
 
 	/**
 	 * addCheckTimeoutTimer
+	 * @param int $timeout 超时；秒
 	 */
 	protected function setConnectionTimeout( $timeout ) {
+		// $timeout = 10;
 		$this->cancelConnectionTimeout();
-		$this->_checkConnectionTimeoutTimer = swoole_timer_after( $timeout, array(
+		$this->_checkConnectionTimeoutTimer = \Swoole\Timer::after( $timeout * 1000, array(
 			$this,
 			'checkConnectTimeout'
 		) );
@@ -860,7 +879,7 @@ class Client {
 	 */
 	protected function cancelConnectionTimeout() {
 		if( $this->_checkConnectionTimeoutTimer ){
-			swoole_timer_clear( $this->_checkConnectionTimeoutTimer );
+			\Swoole\Timer::clear( $this->_checkConnectionTimeoutTimer );
 			$this->_checkConnectionTimeoutTimer = 0;
 		}
 	}
@@ -871,7 +890,8 @@ class Client {
 	protected function setPingTimer( $ping_interval ) {
 		$this->cancelPingTimer();
 		$connection = $this->_connection;
-		$this->_pingTimer = swoole_timer_tick( $ping_interval, function () use ( $connection ) {
+		$this->_pingTimer = \Swoole\Timer::after( $ping_interval * 1000, function () use ( $connection, $ping_interval ) {
+			/*
 			if( ! $this->_recvPingResponse ){
 				if( $this->_options['debug'] ){
 					echo "↓ Recv PINGRESP timeout", PHP_EOL;
@@ -880,11 +900,14 @@ class Client {
 				$connection->close();
 				return;
 			}
+			*/
 			if( $this->_options['debug'] ){
 				echo "↑ Send PINGREQ package", PHP_EOL;
 			}
 			$this->_recvPingResponse = false;
 			$connection->send( Mqtt::encode( array( 'cmd' => Mqtt::CMD_PINGREQ ) ) );
+			//
+			$this->setPingTimer( $ping_interval );
 		} );
 	}
 
@@ -893,7 +916,7 @@ class Client {
 	 */
 	protected function cancelPingTimer() {
 		if( $this->_pingTimer ){
-			swoole_timer_clear( $this->_pingTimer );
+			\Swoole\Timer::clear( $this->_pingTimer );
 			$this->_pingTimer = 0;
 		}
 	}
@@ -902,6 +925,7 @@ class Client {
 	 * checkConnectTimeout
 	 */
 	public function checkConnectTimeout() {
+		d('AAAAAAAAAAAAAAAAAAAAAAAA断开AAAAAAAAAAAAAAAAAAAAAAAAA');
 		if( $this->_state === static::STATE_CONNECTING || $this->_state === static::STATE_WAITCONACK ){
 			$this->triggerError( 101 );
 			empty( $this->_connection ) ? $this->_connection = null : $this->_connection->close();
